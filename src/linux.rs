@@ -1,51 +1,11 @@
-use libc;
+use xdo_sys::*;
 
 use crate::{Key, KeyboardControllable, MouseButton, MouseControllable};
 
-use self::libc::{c_char, c_int, c_void, useconds_t};
-use std::{borrow::Cow, ffi::CString, ptr};
+use std::{borrow::Cow, ffi::CString, os::raw::c_int, ptr};
 
-const CURRENT_WINDOW: c_int = 0;
+const CURRENT_WINDOW: Window = 0;
 const DEFAULT_DELAY: u64 = 12000;
-type Window = c_int;
-type Xdo = *const c_void;
-
-#[link(name = "xdo")]
-extern "C" {
-    fn xdo_free(xdo: Xdo);
-    fn xdo_new(display: *const c_char) -> Xdo;
-
-    fn xdo_click_window(xdo: Xdo, window: Window, button: c_int) -> c_int;
-    fn xdo_mouse_down(xdo: Xdo, window: Window, button: c_int) -> c_int;
-    fn xdo_mouse_up(xdo: Xdo, window: Window, button: c_int) -> c_int;
-    fn xdo_move_mouse(xdo: Xdo, x: c_int, y: c_int, screen: c_int) -> c_int;
-    fn xdo_move_mouse_relative(xdo: Xdo, x: c_int, y: c_int) -> c_int;
-
-    fn xdo_enter_text_window(
-        xdo: Xdo,
-        window: Window,
-        string: *const c_char,
-        delay: useconds_t,
-    ) -> c_int;
-    fn xdo_send_keysequence_window(
-        xdo: Xdo,
-        window: Window,
-        string: *const c_char,
-        delay: useconds_t,
-    ) -> c_int;
-    fn xdo_send_keysequence_window_down(
-        xdo: Xdo,
-        window: Window,
-        string: *const c_char,
-        delay: useconds_t,
-    ) -> c_int;
-    fn xdo_send_keysequence_window_up(
-        xdo: Xdo,
-        window: Window,
-        string: *const c_char,
-        delay: useconds_t,
-    ) -> c_int;
-}
 
 fn mousebutton(button: MouseButton) -> c_int {
     match button {
@@ -61,7 +21,7 @@ fn mousebutton(button: MouseButton) -> c_int {
 
 /// The main struct for handling the event emitting
 pub struct Enigo {
-    xdo: Xdo,
+    xdo: *mut xdo_t,
     delay: u64,
 }
 // This is safe, we have a unique pointer.
@@ -90,6 +50,7 @@ impl Enigo {
         self.delay = delay;
     }
 }
+
 impl Drop for Enigo {
     fn drop(&mut self) {
         unsafe {
@@ -97,6 +58,7 @@ impl Drop for Enigo {
         }
     }
 }
+
 impl MouseControllable for Enigo {
     fn mouse_move_to(&mut self, x: i32, y: i32) {
         unsafe {
@@ -160,12 +122,13 @@ impl MouseControllable for Enigo {
         }
     }
 }
+
 fn keysequence<'a>(key: Key) -> Cow<'a, str> {
     if let Key::Layout(c) = key {
         return Cow::Owned(format!("U{:X}", c as u32));
     }
     if let Key::Raw(k) = key {
-        return Cow::Owned(format!("{}", k as u16))
+        return Cow::Owned(format!("{}", k as u16));
     }
     #[allow(deprecated)]
     // I mean duh, we still need to support deprecated keys until they're removed
@@ -207,6 +170,7 @@ fn keysequence<'a>(key: Key) -> Cow<'a, str> {
         Key::Command | Key::Super | Key::Windows | Key::Meta => "Super",
     })
 }
+
 impl KeyboardControllable for Enigo {
     fn key_sequence(&mut self, sequence: &str) {
         let string = CString::new(sequence).unwrap();
